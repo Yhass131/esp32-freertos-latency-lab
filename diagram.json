@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "author": "Uri Shaked",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 48, "left": 24.04, "attrs": {} },
+    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": -76.45, "left": -28.8, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:25", "esp:26", "green", [ "v0", "h-9.45", "v9.6" ] ],
+    [ "logic1:GND", "esp:GND.2", "black", [ "v19.2", "h153.6" ] ],
+    [ "logic1:D0", "esp:25", "green", [ "h-9.6", "v220.8" ] ],
+    [ "esp:27", "logic1:D1", "green", [ "h-76.65", "v-230.4" ] ]
+  ],
+  "dependencies": {}
+}

@@ -1,0 +1,77 @@
+# ---- PlatformIO ----
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+compile_commands.json
+
+# ---- ESP-IDF (if the project migrates off Arduino later) ----
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+# sdkconfig.defaults IS committed — it is the reproducible part
+
+# ---- VS Code ----
+# PlatformIO regenerates these per machine; paths are absolute and will
+# conflict on every checkout.
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch/
+.vscode/.browse.c_cpp.db*
+# .vscode/extensions.json and settings.json are intentionally NOT ignored —
+# they help anyone cloning the repo get the same toolchain.
+
+# ---- Wokwi ----
+# diagram.json and wokwi.toml are committed: they are the wiring definition.
+# Auto-generated captures at the repo root are scratch.
+/wokwi-logic.vcd
+/wokwi.vcd
+/*.vcd
+
+# ---- Measurement data ----
+# Scratch runs at the root are ignored. Curated captures under data/ are
+# committed on purpose — they are the evidence this project exists to produce.
+/*.csv
+/out.csv
+!/data/**/*.vcd
+!/data/**/*.csv
+
+# ---- Python tooling ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---- Secrets ----
+# WiFi credentials arrive in week 2. Add the real file here before writing it,
+# not after — git remembers.
+include/secrets.h
+include/credentials.h
+secrets.h
+.env
+
+# ---- Editors ----
+*.swp
+*.swo
+*~
+.idea/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# ---- Build artifacts / logs ----
+*.o
+*.a
+*.elf
+*.bin
+*.map
+*.log
