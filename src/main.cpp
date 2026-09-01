@@ -46,23 +46,25 @@ https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/periph
 */
 void trigger_output_start(void)
 {
+    // configure timer 0 for 1 kHz, 10-bit resolution
     ledc_timer_config_t timer = {
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .duty_resolution = LEDC_TIMER_10_BIT,
-        .timer_num = LEDC_TIMER_0,
-        .freq_hz = 1000,
-        .clk_cfg = LEDC_USE_APB_CLK,
+        .speed_mode = LEDC_LOW_SPEED_MODE,      // low speed mode is the only mode that can use GPIO 25
+        .duty_resolution = LEDC_TIMER_10_BIT,   // 10-bit resolution, 0-1023
+        .timer_num = LEDC_TIMER_0,              // timer 0
+        .freq_hz = 1000,                        // 1 kHz
+        .clk_cfg = LEDC_USE_APB_CLK,            // use APB clock
     };
     ESP_ERROR_CHECK(ledc_timer_config(&timer));
 
+    // configure channel 0 to use timer 0, output on GPIO 25
     ledc_channel_config_t chan = {
-        .gpio_num = TRIG_OUT_GPIO,
-        .speed_mode = LEDC_LOW_SPEED_MODE,
-        .channel = LEDC_CHANNEL_0,
-        .intr_type = LEDC_INTR_DISABLE,
-        .timer_sel = LEDC_TIMER_0,
-        .duty = 512, /* 50% of 2^10 */
-        .hpoint = 0,
+        .gpio_num = TRIG_OUT_GPIO,              // GPIO 25
+        .speed_mode = LEDC_LOW_SPEED_MODE,      // low speed mode is the only mode that can use GPIO 25
+        .channel = LEDC_CHANNEL_0,              // channel 0
+        .intr_type = LEDC_INTR_DISABLE,         // disable interrupts
+        .timer_sel = LEDC_TIMER_0,              // use timer 0
+        .duty = 512,                            // how long the pin is high in each cycle, 50% of 2^10
+        .hpoint = 0,                            // start at 0
     };
     ESP_ERROR_CHECK(ledc_channel_config(&chan));
 }
@@ -97,13 +99,25 @@ void setup()
 
     trigger_output_start();
 
-    xTaskCreatePinnedToCore(workTask, "work", 4096, NULL, 20, &s_workTask, 1);
+    xTaskCreatePinnedToCore(
+        workTask,               // function
+        "work",                 // name
+        4096,                   // stack size
+        NULL,                   // parameters
+        20,                     // priority
+        &s_workTask,            // task handle
+        1                       // core ID
+    ); 
 
     // Configures GPIO 26's to run trig_isr on a rising edge. 
     // Nothing polls; straight hardware.
     // Must come after xTaskCreate, an edge arriving while s_workTask
     // is still NULL would notify a null handle.
-    attachInterrupt(digitalPinToInterrupt(TRIG_IN_GPIO), trig_isr, RISING);
+    attachInterrupt(
+        digitalPinToInterrupt(TRIG_IN_GPIO), // interrupt tirgger pin
+        trig_isr,               // function to call
+        RISING                  // trigger on rising edge
+    );
 
     Serial.println("running");
 }
