@@ -5,6 +5,9 @@ Measure trigger-to-response latency from a Wokwi logic analyzer VCD capture.
 Pairs each rising edge on the trigger channel with the next rising edge on the
 response channel, and reports the latency distribution.
 
+Disclaimer: this analysis script was AI-generated (Claude) and reviewed/adapted by me.
+The firmware and measurement design are my own work.
+
 Usage:
     python vcd_latency.py wokwi-logic.vcd
     python vcd_latency.py wokwi-logic.vcd --trigger D0 --response D1 --csv out.csv
