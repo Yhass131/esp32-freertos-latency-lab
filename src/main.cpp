@@ -10,11 +10,12 @@
 
 // ========= Setup      =========
 
-static TaskHandle_t s_workTask = NULL;
-volatile uint32_t g_edges = 0;
+static TaskHandle_t s_workTask = NULL;      // handle to the work task
+static TaskHandle_t s_trackTask = NULL;     // handle to the track task
 
-volatile uint32_t g_t_isr = 0;
-volatile uint32_t g_last_latency_us = 0;
+volatile uint32_t g_edges = 0;              // counts the number of rising edges seen on GPIO 26
+volatile uint32_t g_t_isr = 0;              // time the ISR was called, in microseconds
+volatile uint32_t g_last_latency_us = 0;    // time between ISR and task wakeup, in microseconds
 
 /*
     This function lives in IRAM (due to IRAM_ATTR),
@@ -98,7 +99,8 @@ void trackData(void *pvParameters)
 {
     for (;;)
     {
-        
+        // next step: track data, e.g. log and send over network, etc.
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 } 
 
@@ -133,10 +135,12 @@ void setup()
         0                       // core ID
     );
 
-    // Configures GPIO 26's to run trig_isr on a rising edge. 
-    // Nothing polls; straight hardware.
-    // Must come after xTaskCreate, an edge arriving while s_workTask
-    // is still NULL would notify a null handle.
+    /*
+     Configures GPIO 26's to run trig_isr on a rising edge. 
+     Nothing polls; straight hardware.
+     Must come after xTaskCreate, an edge arriving while s_workTask
+     is still NULL would notify a null handle.
+    */
     attachInterrupt(
         digitalPinToInterrupt(TRIG_IN_GPIO), // interrupt tirgger pin
         trig_isr,               // function to call
