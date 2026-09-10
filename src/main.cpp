@@ -81,13 +81,27 @@ void workTask(void *pvParameters)
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // blocks, zero CPU
 
-        uint32_t t_wake = (uint32_t)esp_timer_get_time();
         GPIO.out_w1ts = (1UL << TRIG_RESPONSE); // work starts
-        
-        g_last_latency_us = t_wake - g_t_isr;
+
+        uint32_t t_wake = (uint32_t)esp_timer_get_time();
+        g_last_latency_us = t_wake - g_t_isr; 
+        /*
+            t_wake is the time the task was woken up, t_isr is the time the ISR was called.
+            The difference is the latency of the task being woken up by the ISR.
+        */        
+
         GPIO.out_w1tc = (1UL << TRIG_RESPONSE); // work ends
     }
 }
+
+void trackData(void *pvParameters)
+{
+    for (;;)
+    {
+        
+    }
+} 
+
 // ========= Setup & Loop   =========
 
 void setup()
@@ -104,10 +118,20 @@ void setup()
         "work",                 // name
         4096,                   // stack size
         NULL,                   // parameters
-        20,                     // priority
+        1,                     // priority
         &s_workTask,            // task handle
         1                       // core ID
-    ); 
+    );
+
+    xTaskCreatePinnedToCore(
+        trackData,              // function
+        "track",                // name
+        4096,                   // stack size
+        NULL,                   // parameters
+        1,                     // priority
+        &s_trackTask,           // task handle
+        0                       // core ID
+    );
 
     // Configures GPIO 26's to run trig_isr on a rising edge. 
     // Nothing polls; straight hardware.
@@ -126,7 +150,7 @@ void loop()
 {
     static uint32_t last = 0;
     uint32_t now = g_edges;
-    Serial.printf("edges: %u\n", now - last);
+    Serial.printf("edges: %u || last latency: %u \n", now - last, g_last_latency_us);
     last = now;
     delay(1000);
 }

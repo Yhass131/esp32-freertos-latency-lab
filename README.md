@@ -1,4 +1,4 @@
- # esp32-freertos-latency-lab
+# esp32-freertos-latency-lab
 
 Measuring and defending real-time determinism on an ESP32 under FreeRTOS.
 
