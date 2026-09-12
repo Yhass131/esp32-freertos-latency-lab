@@ -6,16 +6,18 @@ This project works past just programming an ESP32, it aims to analyze its hardwa
 
 A hardware signal triggers the interrupt a 1000 times a second and firmware must respond at almost exact timing. In some systems, any delay could result in catastrophe, for this project, being late is a failure. 
 
-Separate tools record every ISR-to-task latency, then (this part is still in progress) using a running average, calculated useful data. 
+Calculate ISR-to-task latency data using a running average and other formula. Records count, min, mean, max, and deadline misses per window, reported once per second from a separate task. (Will expand printed data) 
 
 The lab will be stressed with competing workloads (this part is still in progress) like buses, blocking, flash writes, network traffic, etc. Switched on and off at runtime while the witness keeps recording.
 
 The deliverable (this part is still in progress) includes sets of data from hardware tests poised against expected timings and simulations.
 
 > **Status: in progress.**
-> The trigger source and interrupt-to-task path are working and characterized in *Current architecture*
-> Ran on simulation and hardware. All figures below are
-> labelled with where they came from.
+> Trigger source and interrupt-to-task path are working on hardware with a measured baseline. 
+> Ran on simulation and hardware. All figures below.
+
+Next: stress the system and record how latency degrades under competing load.
+
 
 ---
 
@@ -33,7 +35,7 @@ optimization: when flash is being written or erased the instruction cache is
 disabled, and a flash-resident handler would be masked out for milliseconds or
 panic outright. The handler stays minimal — timestamp, notify, yield.
 
-**Task.** `workTask` blocks itself on start with `ulTaskNotifyTake`, consuming zero CPU while
+**Task.** `workTask()` blocks itself on start with `ulTaskNotifyTake`, consuming zero CPU while
 waiting. `portYIELD_FROM_ISR` forces the reschedule on ISR exit rather than at the
 next scheduler tick, which is the difference between microsecond and millisecond
 response.
@@ -60,24 +62,20 @@ that the instrumentation is sound.
 
 ## Results
 
-### Simulation — Wokwi, 5127 events
+### Simulation 
 
-| Metric | min | mean | median | p99 | max | σ |
-| --- | --- | --- | --- | --- | --- | --- |
-| Trigger period (µs) | 999.253 | 1000.000 | 1000.000 | 1000.001 | 1000.001 | 0.010 |
-| Latency (µs) | 31.941 | 31.942 | 31.942 | 31.942 | 32.188 | 0.008 |
-
-Unanswered triggers: 0 of 5127.
-
-**Reading these honestly.** The trigger generator is clean — σ of 10 ns is the
-VCD's own resolution, so the reference clock is as good as the format can express.
-
-The latency figures are *not* a physical result. A spread of one nanosecond across
-five thousand events isn't realistic, it is the signature of a deterministic emulator recomputing the same path with the same output. Simulation validated the **logic** — the interrupt fires, the notification lands, the task wakes, and every trigger got a response; however, meaningful timing data must be from hardware. 
+The Wokwi simulations found a 0.008 standard deviation. A spread of eight nanosecond across
+five thousand events isn't realistic, it is the signature of a deterministic emulator. Simulation validated the **logic** — the interrupt fires, the notification lands, the task wakes, and every trigger got a response; however, timing data must be from hardware. 
 
 ### Hardware
 
-Measured, analysis in progress
+| Condition | Samples | min (µs) | mean (µs) | max (µs) | Misses | Miss rate |
+| --- | --- | --- | --- | --- | --- | --- |
+| Idle baseline | 1000 | 9.075 | 9.075 | 9.191 | 0 | 0% |
+
+Baseline with no competing load. `workTask()` performs no application work; it only records timing, so this is the floor for the interrupt-to-task path on this hardware.
+
+Threshold set at 100 µs, roughly 10× the idle baseline and 10% of the 1 ms period. Not a physical deadline; chosen to flag anomalous samples during stress testing.
 
 ---
 
@@ -92,6 +90,12 @@ choose the internal RC oscillator, which drifts with temperature. Forcing
 with no inherited rounding error.
 
 **Simulation jitter is implausibly low.** σ = 8 ns over 5127 events. Prompted the simulation/hardware split in methodology above.
+
+**Logging inside the measured path** Printing inside of `workTask()` inflated measured latency from ~1,600 to ~121,000 cycles (~6.6 µs → ~504 µs) and cut throughput from 1000 to ~180 samples/sec. Moved reporting to a 1 Hz task.
+
+**Cycle counter vs microsecond timer** esp_timer_get_time() at 1 µs resolution collapsed min/max to the same integer. esp_cpu_get_ccount() at ~4.17 ns resolved a 35-cycle spread.
+
+**Per-sample statistic cost** computing the mean and sqrt inside workTask added ~57 cycles (0.23 µs) and the sqrt promoted to software-emulated double
 
 ---
 
@@ -112,8 +116,8 @@ GPIO 26 uses an internal pulldown so a dislodged jumper reads a clean low and pr
 src/main.cpp        firmware
 tools/              analysis scripts
   vcd_latency.py    VCD parser: pairs edges, reports latency distribution
-data/               committed captures
-docs/               diagrams, traces
+data/               
+docs/               diagrams
 diagram.json        Wokwi wiring
 platformio.ini
 ```
@@ -145,15 +149,6 @@ anything.
 **Measurement infrastructure.** Hardware trigger · interrupt-to-task path · VCD analysis · on-chip timestamping  
 
 The single-trigger version is the model; where I see it going is multiple independent tasks — like servos on a drone, each needing its update on time — and measuring whether the scheduler holds when they contend.
-
-
----
-
-## Open questions
-
-- How much of the 32 µs simulated latency is hardware dispatch versus context
-  switch? Requires running both measurement paths simultaneously.
-- Does Wokwi model deferred context switches at all? 
 
 ---
 
