@@ -13,12 +13,23 @@
 #define TO_US(us) (uint32_t)((uint64_t)us / 240)
 #define TO_US_X1000(us) (uint32_t)((uint64_t)us * 1000 / 240)
 
-#define LATENCY_DEADLINE_US 100 // if the work task is not woken up within this time, count it as a missed interrupt
+#define LATENCY_DEADLINE_US 15 // if the work task is not woken up within this time, count it as a missed interrupt
+
+// Stress testing flags, can be ORed together to stress multiple subsystems at once
+#define STRESS_CPU_LOW    (1<<0)
+#define STRESS_CPU_HIGH   (1<<1)
+#define STRESS_PRINTF     (1<<2)
+#define STRESS_NVS        (1<<3)
+#define STRESS_WIFI       (1<<4)
 
 // ========= Setup      =========
 
+volatile uint32_t g_stress_flags = 0;
+
 static TaskHandle_t s_workTask = NULL;  // handle to the work task
 static TaskHandle_t s_trackTask = NULL; // handle to the track task
+static TaskHandle_t s_stressLowPrioTask = NULL; // handle to the low CPU stress task
+static TaskHandle_t s_stressHighPrioTask = NULL; // handle to the high CPU stress task
 
 volatile uint32_t g_edges = 0; // counts the number of rising edges seen on GPIO 26
 volatile uint32_t g_t_isr = 0; // time the ISR was called, in microseconds
@@ -31,6 +42,9 @@ volatile uint32_t g_last_latency_us = 0; // last latency measured in microsecond
 volatile uint32_t g_miss_count = 0; // counts the number of missed interrupts (if the work task is not woken up in time)
 
 volatile uint32_t g_reset_request = 0; // flag to request a reset of the latency statistics
+
+// ========= Functions  =========
+
 /*
     This function lives in IRAM (due to IRAM_ATTR),
     when called, garantee call time, call takes
@@ -48,7 +62,6 @@ void IRAM_ATTR trig_isr(void)
     portYIELD_FROM_ISR(woken);
 }
 
-// ========= Functions  =========
 /*
     Generates the 1 kHz trigger square wave on GPIO 25, jumpered to GPIO 26.
     LEDC is a PWM peripheral (marketed for LED dimming); at 50% duty it is a
@@ -145,6 +158,36 @@ void workTask(void *pvParameters)
     }
 }
 
+void stressLowPrioTask(void *pvParameters)
+{
+    for (;;)
+    {
+        if (g_stress_flags & STRESS_CPU_LOW)
+        {
+            // low CPU stress: just a simple loop that does nothing
+            for (volatile int i = 0; i < 100000; i++);
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+void stressHighPrioTask(void *pvParameters)
+{
+    for (;;)
+    {
+        if (g_stress_flags & STRESS_CPU_HIGH)
+        {
+            uint32_t start = esp_cpu_get_ccount();
+            while ((esp_cpu_get_ccount() - start) < TO_CYCLE(500))
+            {
+                // spin — deliberately doing nothing, at high priority
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));   // blocks, lets everything else run
+    }
+}
+
+
 void printData(void *pvParameters)
 {
     vTaskDelay(pdMS_TO_TICKS(2000));
@@ -203,6 +246,26 @@ void setup()
     );
 
     xTaskCreatePinnedToCore(
+        stressLowPrioTask,    // function
+        "stress_low",      // name
+        4096,        // stack size
+        NULL,        // parameters
+        15,           // priority
+        &s_stressLowPrioTask, // task handle
+        1            // core ID
+    );
+
+    xTaskCreatePinnedToCore(
+        stressHighPrioTask,    // function
+        "stress_high",      // name
+        4096,        // stack size
+        NULL,        // parameters
+        25,           // priority
+        &s_stressHighPrioTask, // task handle
+        1            // core ID
+    );
+
+    xTaskCreatePinnedToCore(
         printData,    // function
         "track",      // name
         4096,         // stack size
@@ -229,5 +292,18 @@ void setup()
 
 void loop()
 {
-    delay(1000);
+    if (Serial.available())
+    {
+        char c = Serial.read();
+        switch (c)
+        {
+            case '1': g_stress_flags ^= STRESS_CPU_LOW;  break;
+            case '2': g_stress_flags ^= STRESS_CPU_HIGH; break;
+            case '3': g_stress_flags ^= STRESS_PRINTF;   break;
+            case '4': g_stress_flags ^= STRESS_NVS;      break;
+            case '0': g_stress_flags = 0;                break;
+        }
+        printf("# stress flags: 0x%02X\n", g_stress_flags);
+    }
+    delay(10);
 }
