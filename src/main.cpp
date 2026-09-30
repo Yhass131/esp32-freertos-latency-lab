@@ -9,37 +9,39 @@
 #define TRIG_IN_GPIO 26
 #define TRIG_RESPONSE 27
 
-#define TO_CYCLE(us) (uint32_t)((uint64_t)us  * 240)
+#define STRESS_SIGNAL 14 // GPIO 14 is used to signal the start of a stress test, for external measurement
+
+#define TO_CYCLE(us) (uint32_t)((uint64_t)us * 240)
 #define TO_US(us) (uint32_t)((uint64_t)us / 240)
 #define TO_US_X1000(us) (uint32_t)((uint64_t)us * 1000 / 240)
 
 #define LATENCY_DEADLINE_US 15 // if the work task is not woken up within this time, count it as a missed interrupt
 
 // Stress testing flags, can be ORed together to stress multiple subsystems at once
-#define STRESS_CPU_LOW    (1<<0)
-#define STRESS_CPU_HIGH   (1<<1)
-#define STRESS_PRINTF     (1<<2)
-#define STRESS_NVS        (1<<3)
-#define STRESS_WIFI       (1<<4)
+#define STRESS_CPU_LOW (1 << 0)
+#define STRESS_CPU_HIGH (1 << 1)
+#define STRESS_PRINTF (1 << 2)
+#define STRESS_NVS (1 << 3)
+#define STRESS_WIFI (1 << 4)
 
 // ========= Setup      =========
 
 volatile uint32_t g_stress_flags = 0;
 
-static TaskHandle_t s_workTask = NULL;  // handle to the work task
-static TaskHandle_t s_trackTask = NULL; // handle to the track task
-static TaskHandle_t s_stressLowPrioTask = NULL; // handle to the low CPU stress task
+static TaskHandle_t s_workTask = NULL;           // handle to the work task
+static TaskHandle_t s_trackTask = NULL;          // handle to the track task
+static TaskHandle_t s_stressLowPrioTask = NULL;  // handle to the low CPU stress task
 static TaskHandle_t s_stressHighPrioTask = NULL; // handle to the high CPU stress task
 
 volatile uint32_t g_edges = 0; // counts the number of rising edges seen on GPIO 26
 volatile uint32_t g_t_isr = 0; // time the ISR was called, in microseconds
 
-volatile uint32_t g_count = 0; // counts the number of samples taken
-volatile uint32_t g_average = 0; // average latency in microseconds
-volatile uint32_t g_max = 0; // maximum latency in microseconds
-volatile uint32_t g_min = 0xFFFFFFFF; // minimum latency in microseconds
+volatile uint32_t g_count = 0;           // counts the number of samples taken
+volatile uint32_t g_average = 0;         // average latency in microseconds
+volatile uint32_t g_max = 0;             // maximum latency in microseconds
+volatile uint32_t g_min = 0xFFFFFFFF;    // minimum latency in microseconds
 volatile uint32_t g_last_latency_us = 0; // last latency measured in microseconds
-volatile uint32_t g_miss_count = 0; // counts the number of missed interrupts (if the work task is not woken up in time)
+volatile uint32_t g_miss_count = 0;      // counts the number of missed interrupts (if the work task is not woken up in time)
 
 volatile uint32_t g_reset_request = 0; // flag to request a reset of the latency statistics
 
@@ -111,7 +113,7 @@ void workTask(void *pvParameters)
     for (;;)
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY); // blocks, zero CPU
-        uint32_t t_wake = esp_cpu_get_ccount(); // capture the time the task was woken up
+        uint32_t t_wake = esp_cpu_get_ccount();  // capture the time the task was woken up
 
         GPIO.out_w1ts = (1UL << TRIG_RESPONSE); // work starts
 
@@ -130,7 +132,7 @@ void workTask(void *pvParameters)
             g_reset_request = false;
         }
 
-        g_count++; 
+        g_count++;
 
         /*
             t_wake is the time the task was woken up, t_isr is the time the ISR was called.
@@ -139,7 +141,7 @@ void workTask(void *pvParameters)
         g_last_latency_us = t_wake - g_t_isr;
         latency_sum += g_last_latency_us;
 
-        if(TO_US(g_last_latency_us) > LATENCY_DEADLINE_US)
+        if (TO_US(g_last_latency_us) > LATENCY_DEADLINE_US)
         {
             g_miss_count++;
         }
@@ -153,7 +155,7 @@ void workTask(void *pvParameters)
             g_min = g_last_latency_us;
 
         // ==========  =========
-        
+
         GPIO.out_w1tc = (1UL << TRIG_RESPONSE); // work ends
     }
 }
@@ -165,7 +167,8 @@ void stressLowPrioTask(void *pvParameters)
         if (g_stress_flags & STRESS_CPU_LOW)
         {
             // low CPU stress: just a simple loop that does nothing
-            for (volatile int i = 0; i < 100000; i++);
+            for (volatile int i = 0; i < 100000; i++)
+                ;
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -175,31 +178,38 @@ void stressHighPrioTask(void *pvParameters)
 {
     for (;;)
     {
-        if (g_stress_flags & STRESS_CPU_HIGH)
+        vTaskDelay(pdMS_TO_TICKS(10)); // blocks, lets everything else run
+        if (!(g_stress_flags & STRESS_CPU_HIGH))
         {
-            uint32_t start = esp_cpu_get_ccount();
-            while ((esp_cpu_get_ccount() - start) < TO_CYCLE(500))
-            {
-                // spin — deliberately doing nothing, at high priority
-            }
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         }
-        vTaskDelay(pdMS_TO_TICKS(10));   // blocks, lets everything else run
+
+        // GPIO.out_w1ts = (1UL << STRESS_SIGNAL);
+        uint32_t start = esp_cpu_get_ccount();
+        while ((esp_cpu_get_ccount() - start) < TO_CYCLE(500)) { }
+        // GPIO.out_w1tc = (1UL << STRESS_SIGNAL); // work ends
+
+        start = esp_cpu_get_ccount();
+
+        while ((esp_cpu_get_ccount() - start) < TO_CYCLE(500))
+        {
+            // spin — deliberately doing nothing, at high priority
+        }
     }
 }
-
 
 void printData(void *pvParameters)
 {
     vTaskDelay(pdMS_TO_TICKS(2000));
-    
+
     for (;;)
     {
 
         uint32_t count = g_count;
-        uint32_t miss  = g_miss_count;
-        uint32_t avg   = g_average;
-        uint32_t mx    = g_max;
-        uint32_t mn    = g_min;
+        uint32_t miss = g_miss_count;
+        uint32_t avg = g_average;
+        uint32_t mx = g_max;
+        uint32_t mn = g_min;
 
         if (count == 0)
         {
@@ -208,16 +218,13 @@ void printData(void *pvParameters)
             continue;
         }
         printf("Count: %5u || Average: %u.%2.3u || max: %u.%2.3u || min: %u.%2.3u || latency: %u.%2.3u || missed: %5u || miss rate: %u %%\n",
-            count, 
-            TO_US_X1000(avg) / 1000, TO_US_X1000(avg) % 1000, 
-            TO_US_X1000(mx) / 1000, TO_US_X1000(mx) % 1000, 
-            TO_US_X1000(mn) / 1000, TO_US_X1000(mn) % 1000, 
-            TO_US_X1000(g_last_latency_us) / 1000, TO_US_X1000(g_last_latency_us) % 1000,
-            miss, 
-            (miss * 100) / count
-        );
-
-        
+               count,
+               TO_US_X1000(avg) / 1000, TO_US_X1000(avg) % 1000,
+               TO_US_X1000(mx) / 1000, TO_US_X1000(mx) % 1000,
+               TO_US_X1000(mn) / 1000, TO_US_X1000(mn) % 1000,
+               TO_US_X1000(g_last_latency_us) / 1000, TO_US_X1000(g_last_latency_us) % 1000,
+               miss,
+               (miss * 100) / count);
 
         g_reset_request = true; // request to reset the latency statistics
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -233,6 +240,8 @@ void setup()
     pinMode(TRIG_RESPONSE, OUTPUT);
     pinMode(TRIG_IN_GPIO, INPUT_PULLDOWN);
 
+    // pinMode(STRESS_SIGNAL, OUTPUT);
+
     trigger_output_start();
 
     xTaskCreatePinnedToCore(
@@ -240,29 +249,29 @@ void setup()
         "work",      // name
         4096,        // stack size
         NULL,        // parameters
-        20,           // priority
+        20,          // priority
         &s_workTask, // task handle
         1            // core ID
     );
 
     xTaskCreatePinnedToCore(
         stressLowPrioTask,    // function
-        "stress_low",      // name
-        4096,        // stack size
-        NULL,        // parameters
-        15,           // priority
+        "stress_low",         // name
+        4096,                 // stack size
+        NULL,                 // parameters
+        15,                   // priority
         &s_stressLowPrioTask, // task handle
-        1            // core ID
+        1                     // core ID
     );
 
     xTaskCreatePinnedToCore(
         stressHighPrioTask,    // function
-        "stress_high",      // name
-        4096,        // stack size
-        NULL,        // parameters
-        25,           // priority
+        "stress_high",         // name
+        4096,                  // stack size
+        NULL,                  // parameters
+        25,                    // priority
         &s_stressHighPrioTask, // task handle
-        1            // core ID
+        1                      // core ID
     );
 
     xTaskCreatePinnedToCore(
@@ -297,13 +306,29 @@ void loop()
         char c = Serial.read();
         switch (c)
         {
-            case '1': g_stress_flags ^= STRESS_CPU_LOW;  break;
-            case '2': g_stress_flags ^= STRESS_CPU_HIGH; break;
-            case '3': g_stress_flags ^= STRESS_PRINTF;   break;
-            case '4': g_stress_flags ^= STRESS_NVS;      break;
-            case '0': g_stress_flags = 0;                break;
+        case '1':
+            g_stress_flags ^= STRESS_CPU_LOW; // ^= (XOR) toggles the bit
+            break; 
+        case '2':
+            g_stress_flags ^= STRESS_CPU_HIGH;
+            break;
+        case '3':
+            g_stress_flags ^= STRESS_PRINTF;
+            break;
+        case '4':
+            g_stress_flags ^= STRESS_NVS;
+            break;
+        case '0':
+            g_stress_flags = 0;
+            break;
         }
         printf("# stress flags: 0x%02X\n", g_stress_flags);
     }
+
+    if (g_stress_flags & STRESS_CPU_HIGH)
+    {
+        xTaskNotifyGive(s_stressHighPrioTask);
+    }
+
     delay(10);
 }

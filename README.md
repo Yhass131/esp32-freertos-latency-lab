@@ -83,6 +83,12 @@ Their difference isolates the interrupt dispatch cost, and agreement between two
 that the instrumentation is sound.
 
 
+### Different stresses 
+
+**Low Priority stress**: `stressLowPrioTask` runs a fixed 500 µs busy-loop, toggled at runtime with key `1`. Its priority is below `workTask`, so the scheduler preempts it as soon as the ISR notifies — ISR-to-task latency should be unaffected beyond the cost of the context switch itself.
+
+**High Priority stress**: `stressHighPrioTask` runs the same 500 µs burn, toggled with key `2`, at a priority above `workTask`. Now `workTask` cannot run until the burn finishes, so a trigger arriving mid-burn waits out the remainder. Max latency should approach the burn length, and the average should rise in proportion to how often the burn is active.
+
 ---
 
 
@@ -105,6 +111,8 @@ five thousand events isn't realistic, it is the signature of a deterministic emu
 | Condition | Samples | min (µs) | mean (µs) | max (µs) | Misses | Miss rate |
 | --- | --- | --- | --- | --- | --- | --- |
 | Idle baseline | 1000 | 9.075 | 9.075 | 9.191 | 0 | 0% |
+| Low priority stress | 1000 | 9.075 | 9.075 | 9.191 | 0 | 0% |
+| High pritority stress | 1000 | 8.958 | 29.208 | 231.508 | 9 | 9% |
 
 
 Baseline with no competing load. `workTask()` performs no application work; it only records timing, so this is the floor for the interrupt-to-task path on this hardware.
@@ -122,11 +130,10 @@ Threshold set at 100 µs, roughly 10× the idle baseline and 10% of the 1 ms per
 ![Baseline_Single_Period](docs/Osc_baseLine_SingleT.jpeg)
 
 
-| Condition | Samples | min (µs) | mean (µs) | max (µs) | Misses |
+| Condition | Samples | min (µs) | mean (µs) | max (µs) |
 | --- | --- | --- | --- | --- | --- |
-| Idle baseline | on-chip | 1000 | 9.075 | 9.075 | 9.191 |
-| Idle baseline | scope, short capture | — | 10.70 | 10.72 | 10.74 |
-| Idle baseline | scope, 5+ min run | — | 10.70 | 10.72 | 11.64 |
+| Idle baseline | scope, short capture | 10.70 | 10.72 | 10.74 |
+| Idle baseline | scope, 5+ min run | 10.70 | 10.72 | 11.64 |
 
 
 The scope measures from the electrical edge; the on-chip timestamp starts once `trig_isr` is already executing. The ~1.65 µs difference is interrupt dispatch where the ESP32 vectoring to the handler. The software measurement is structurally blind to it.
