@@ -131,7 +131,7 @@ Threshold set at 100 µs, roughly 10× the idle baseline and 10% of the 1 ms per
 
 
 | Condition | Samples | min (µs) | mean (µs) | max (µs) |
-| --- | --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | Idle baseline | scope, short capture | 10.70 | 10.72 | 10.74 |
 | Idle baseline | scope, 5+ min run | 10.70 | 10.72 | 11.64 |
 

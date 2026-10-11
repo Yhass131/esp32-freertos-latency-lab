@@ -59,8 +59,8 @@ void IRAM_ATTR trig_isr(void)
     g_edges++;
     BaseType_t woken = pdFALSE;
     vTaskNotifyGiveFromISR(s_workTask, &woken);
-    // force reschedule on ISR exit; without this
-    // the woken task waits for the next tick (~1 ms)
+    // force reschedule on ISR exit 
+    // without this the woken task waits for the next tick (~1 ms)
     portYIELD_FROM_ISR(woken);
 }
 
